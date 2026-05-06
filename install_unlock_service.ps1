@@ -16,7 +16,9 @@ param(
 $ErrorActionPreference = "Stop"
 $transcriptPath = Join-Path $env:TEMP "atheris_install_unlock.log"
 try { Stop-Transcript | Out-Null } catch {}
-Start-Transcript -Path $transcriptPath -Force | Out-Null
+try { Start-Transcript -Path $transcriptPath -Force -ErrorAction Stop | Out-Null } catch {
+    Write-Host "(Start-Transcript devre disi, devam ediyorum)"
+}
 $ServiceName = "AtherisUnlock"
 # $PSScriptRoot bos olabilir (script dosya olarak calistirilmadiysa). Fallback: cwd.
 $ProjectDir = $PSScriptRoot
@@ -38,7 +40,8 @@ function Test-Admin {
 }
 
 if (-not (Test-Admin)) {
-    throw "Yonetici olarak calistirman gerek. PowerShell'i 'Run as Administrator' ile ac, sonra: cd '$ProjectDir'; .\install_unlock_service.ps1"
+    Write-Error "Yonetici olarak calistirman gerek. PowerShell'i 'Run as Administrator' ile ac."
+    exit 1
 }
 
 if ($Uninstall) {
