@@ -19,7 +19,15 @@ HELP = (
     "*Genel*\n"
     "/start — Karsilama\n"
     "/help — Bu yardim\n\n"
-    "_Diger komutlar sonraki asamalarda eklenecek._"
+    "*📸 Ekran*\n"
+    "/screenshot \\[monitor\\] — Ekran goruntusu\n"
+    "/click X Y — Sol tik\n"
+    "/rclick X Y — Sag tik\n"
+    "/dclick X Y — Cift tik\n"
+    "/type METIN — Klavye ile yaz\n"
+    "/key TUS — Tek tus \\(enter, esc, f5, ctrl\\+c\\.\\.\\.\\)\n"
+    "/scroll N — Scroll \\(\\+/\\-\\)\n"
+    "/mouse\\_pos — Mouse konumu"
 )
 
 

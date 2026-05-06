@@ -15,12 +15,23 @@ from utils.logger import setup_logging
 
 def _build_app() -> Application:
     from handlers import start as h_start
+    from handlers import screen as h_screen
 
     app = Application.builder().token(CONFIG.bot_token).build()
 
     # --- Genel ---
     app.add_handler(CommandHandler("start", h_start.cmd_start))
     app.add_handler(CommandHandler("help", h_start.cmd_help))
+
+    # --- Ekran ---
+    app.add_handler(CommandHandler("screenshot", h_screen.cmd_screenshot))
+    app.add_handler(CommandHandler("click", h_screen.cmd_click))
+    app.add_handler(CommandHandler("rclick", h_screen.cmd_rclick))
+    app.add_handler(CommandHandler("dclick", h_screen.cmd_dclick))
+    app.add_handler(CommandHandler("type", h_screen.cmd_type))
+    app.add_handler(CommandHandler("key", h_screen.cmd_key))
+    app.add_handler(CommandHandler("scroll", h_screen.cmd_scroll))
+    app.add_handler(CommandHandler("mouse_pos", h_screen.cmd_mouse_pos))
 
     # --- Hata yakalama ---
     app.add_error_handler(_on_error)
