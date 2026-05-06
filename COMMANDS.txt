@@ -17,6 +17,8 @@ sysinfo - CPU RAM disk kullanimi
 uptime - Bilgisayar ne kadardir acik
 battery - Pil yuzdesi ve durumu
 lock - Ekrani kilitle
+unlock - Best-effort unlock (ekrani uyandir, swipe gec, opsiyonel sifre)
+uyari - Ekrana topmost uyari kutusu cikar
 sleep - Uyku moduna al
 logoff - Oturumu kapat (onayli)
 shutdown - Bilgisayari kapat (onayli, opsiyonel saniye)

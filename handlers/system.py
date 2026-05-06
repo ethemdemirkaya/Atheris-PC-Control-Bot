@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import os
 import shlex
 import subprocess
 import sys
+import threading
 import time
 
 import psutil
@@ -69,6 +71,77 @@ async def cmd_battery(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # --------- Anlik islemler ---------
+
+@authorized
+async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Best-effort unlock: ekrani uyandir, swipe'i gec, opsiyonel sifre yaz.
+
+    UYARI: Windows'un lock ekrani (secure desktop) bot girdisini cogunlukla
+    blokar. Bu komut garanti calismaz; en azindan ekrani uyandirir.
+    """
+    if sys.platform != "win32":
+        await reply(update, "Sadece Windows'ta destekleniyor.")
+        return
+    try:
+        import pyautogui  # lazy
+
+        # 1) Mouse hareketi → ekran uyanir
+        x, y = pyautogui.position()
+        pyautogui.moveTo(x + 5, y + 5, duration=0.05)
+        pyautogui.moveTo(x, y, duration=0.05)
+        # 2) Lock screen'i kaldir (Win10/11 swipe ekrani Space ile gecer)
+        pyautogui.press("space")
+        time.sleep(0.4)
+
+        password = os.getenv("UNLOCK_PASSWORD", "").strip()
+        msg_extra = ""
+        if password:
+            try:
+                # SendInput Unicode → klavye duzeninden bagimsiz
+                from handlers.screen import _UNICODE_TYPE_OK, send_unicode_char  # type: ignore
+
+                if _UNICODE_TYPE_OK:
+                    for ch in password:
+                        send_unicode_char(ch)
+                else:
+                    pyautogui.write(password, interval=0.02)
+            except Exception:
+                pyautogui.write(password, interval=0.02)
+            time.sleep(0.15)
+            pyautogui.press("enter")
+            msg_extra = " Sifre denendi."
+        await reply(
+            update,
+            "🔓 Wake + space gonderildi." + msg_extra
+            + "\n_Not: secure desktop blokayabilir; sonuc cogunlukla manuel girise bagli._",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.exception("unlock hatasi")
+        await reply(update, f"Unlock hatasi: {e}")
+
+
+@authorized
+async def cmd_uyari(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ekrana topmost uyari kutusu cikar. Bot bloke olmasin diye ayri thread."""
+    if sys.platform != "win32":
+        await reply(update, "Sadece Windows'ta destekleniyor.")
+        return
+    text = " ".join(context.args).strip() if context.args else "⚠️ Dikkat! PC sahibi tarafindan kontrol ediliyor."
+    title = "Atheris Uyari"
+    # MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND | MB_SYSTEMMODAL
+    flags = 0x00000000 | 0x00000030 | 0x00040000 | 0x00010000 | 0x00001000
+
+    def _show() -> None:
+        try:
+            ctypes.windll.user32.MessageBoxW(0, text, title, flags)
+        except Exception:
+            logger.exception("MessageBoxW hatasi")
+
+    threading.Thread(target=_show, daemon=True).start()
+    preview = text if len(text) <= 100 else text[:97] + "..."
+    await reply(update, f"📢 Uyari gosterildi: {preview}")
+
 
 @authorized
 async def cmd_lock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
