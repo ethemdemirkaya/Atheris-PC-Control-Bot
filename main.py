@@ -20,12 +20,14 @@ def _build_app() -> Application:
     from handlers import apps as h_apps
     from handlers import media as h_media
     from handlers import files as h_files
+    from handlers import interactive as h_inter
 
     app = Application.builder().token(CONFIG.bot_token).build()
 
     # --- Genel ---
     app.add_handler(CommandHandler("start", h_start.cmd_start))
     app.add_handler(CommandHandler("help", h_start.cmd_help))
+    app.add_handler(CommandHandler("menu", h_inter.cmd_menu))
 
     # --- Ekran ---
     app.add_handler(CommandHandler("screenshot", h_screen.cmd_screenshot))
@@ -68,6 +70,9 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("files", h_files.cmd_files))
     app.add_handler(CommandHandler("download", h_files.cmd_download))
     app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, h_files.on_incoming_file))
+
+    # --- Interaktif ---
+    app.add_handler(h_inter.callback_handler())
 
     # --- Hata yakalama ---
     app.add_error_handler(_on_error)
