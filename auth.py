@@ -64,6 +64,18 @@ def authorized(func: HandlerFn) -> HandlerFn:
             except Exception:
                 pass
             return
+        # Audit log: hangi kullanici hangi komutu calistirdi
+        try:
+            text = (update.effective_message.text if update.effective_message else "") or ""
+            logger.info(
+                "AUDIT id=%s username=%s handler=%s text=%r",
+                user.id,
+                user.username,
+                func.__name__,
+                text[:200],
+            )
+        except Exception:
+            pass
         await func(update, context)
 
     return wrapper

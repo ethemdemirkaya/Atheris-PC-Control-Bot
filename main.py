@@ -84,9 +84,27 @@ async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     log = logging.getLogger("error")
     err = context.error
     log.error("Handler hata: %s", err, exc_info=err)
+
+    # Etkilenen mesaja kisa yanit
     if isinstance(update, Update) and update.effective_message:
         try:
-            await update.effective_message.reply_text(f"⚠️ Hata: {type(err).__name__}: {err}")
+            await update.effective_message.reply_text(
+                f"⚠️ Hata: {type(err).__name__}"
+            )
+        except Exception:
+            pass
+
+    # Sahibe DM: detayli stack trace (sadece ilk yetkili kullaniciya)
+    if CONFIG.allowed_user_ids:
+        owner_id = next(iter(sorted(CONFIG.allowed_user_ids)))
+        try:
+            import traceback as _tb
+
+            tb = "".join(_tb.format_exception(type(err), err, err.__traceback__))
+            chunk = tb[-3500:]
+            await context.bot.send_message(
+                chat_id=owner_id, text=f"🛑 Bot hata:\n<pre>{chunk}</pre>", parse_mode="HTML"
+            )
         except Exception:
             pass
 
