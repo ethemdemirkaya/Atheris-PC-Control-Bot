@@ -46,3 +46,6 @@ PCControlBot.exe
 screenshots/
 recordings/
 downloads/
+
+# NSSM (downloaded by install script)
+tools/

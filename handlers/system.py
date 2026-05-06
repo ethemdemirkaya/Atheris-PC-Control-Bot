@@ -71,26 +71,97 @@ async def cmd_battery(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # --------- Anlik islemler ---------
 
+def _try_unlock_service(password: str) -> tuple[bool, str]:
+    """LocalSystem unlock servisine named pipe ile sifre gonder.
+
+    Returns (ok, message). Servis yoksa veya yanit vermezse ok=False ve
+    sebep mesaj olarak doner.
+    """
+    if sys.platform != "win32":
+        return False, "Sadece Windows."
+    secret = os.getenv("UNLOCK_SERVICE_SECRET", "").strip()
+    if not secret:
+        return False, "UNLOCK_SERVICE_SECRET tanimsiz."
+
+    pipe_name = r"\\.\pipe\AtherisUnlock"
+    GENERIC_READ = 0x80000000
+    GENERIC_WRITE = 0x40000000
+    OPEN_EXISTING = 3
+    INVALID_HANDLE = -1
+    ERROR_PIPE_BUSY = 231
+
+    k32 = ctypes.windll.kernel32
+
+    handle = k32.CreateFileW(
+        pipe_name, GENERIC_READ | GENERIC_WRITE, 0, None, OPEN_EXISTING, 0, None
+    )
+    if handle == INVALID_HANDLE or handle == 0:
+        err = k32.GetLastError()
+        if err == 2:  # ERROR_FILE_NOT_FOUND
+            return False, "unlock servisi calismiyor (NSSM ile kur — bkz. SETUP_UNLOCK_SERVICE.md)"
+        if err == ERROR_PIPE_BUSY:
+            return False, "unlock servisi mesgul, tekrar dene."
+        return False, f"pipe acilamadi (err={err})"
+    try:
+        # 5sn timeout
+        k32.SetNamedPipeHandleState.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        msg_mode = ctypes.c_ulong(0x00000002)  # PIPE_READMODE_MESSAGE
+        k32.SetNamedPipeHandleState(handle, ctypes.byref(msg_mode), None, None)
+
+        payload = (secret + "\n" + password).encode("utf-8")
+        written = ctypes.c_ulong(0)
+        ok = k32.WriteFile(handle, payload, len(payload), ctypes.byref(written), None)
+        if not ok:
+            return False, f"pipe yazma hata (err={k32.GetLastError()})"
+
+        buf = ctypes.create_string_buffer(1024)
+        n = ctypes.c_ulong(0)
+        ok = k32.ReadFile(handle, buf, 1024, ctypes.byref(n), None)
+        if not ok:
+            return False, f"pipe okuma hata (err={k32.GetLastError()})"
+        resp = buf.raw[: n.value].decode("utf-8", errors="replace").strip()
+        return resp.startswith("OK"), resp
+    finally:
+        try:
+            k32.CloseHandle(handle)
+        except Exception:
+            pass
+
+
 @authorized
 async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Best-effort unlock: ekrani uyandir, swipe'i gec, opsiyonel sifre yaz.
+    """Lock ekranindan gercek unlock — LocalSystem servisi araciligiyla.
 
-    pyautogui yerine direkt Win32 (SetCursorPos + keybd_event) — boylece
-    cursor lock ekraninda kose noktada oldugunda FAILSAFE tetiklenmiyor.
-
-    UYARI: Windows'un lock ekrani (secure desktop) bot girdisini cogunlukla
-    blokar. Bu komut garanti calismaz; en azindan ekrani uyandirir.
+    Servis kurulmussa Winlogon desktop'a SetThreadDesktop yapip sifreyi
+    gercekten yazar. Kurulu degilse fallback olarak wake-jiggle + Space
+    gonderir (sadece monitoru uyandirir).
     """
     if sys.platform != "win32":
         await reply(update, "Sadece Windows'ta destekleniyor.")
         return
+
+    password = os.getenv("UNLOCK_PASSWORD", "").strip()
+
+    if password and os.getenv("UNLOCK_SERVICE_SECRET", "").strip():
+        ok, msg = _try_unlock_service(password)
+        if ok:
+            await reply(update, "🔓 Servis ile unlock gonderildi (Winlogon desktop).")
+            return
+        # Servis yoksa / hata varsa fallback'a dus, kullaniciya nedeni bildir
+        logger.info("Unlock servisi reddetti: %s — fallback'a dusuluyor", msg)
+        fallback_note = f"\n_Servis: {msg}_"
+    else:
+        fallback_note = (
+            "\n_Gercek unlock icin SETUP\\_UNLOCK\\_SERVICE.md'ye bak — LocalSystem servisi kurulmali._"
+        )
+
+    # --- Fallback: wake jiggle + Space (sadece uyandirma) ---
     try:
         u32 = ctypes.windll.user32
 
         class _POINT(ctypes.Structure):
             _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
-        # 1) Mouse jiggle — SetCursorPos pyautogui'yi atlatir, FAILSAFE yok
         pt = _POINT()
         u32.GetCursorPos(ctypes.byref(pt))
         x0, y0 = pt.x, pt.y
@@ -98,39 +169,18 @@ async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         time.sleep(0.05)
         u32.SetCursorPos(x0, y0)
 
-        # 2) Space — Win10/11 lock swipe ekranini gecer
         VK_SPACE = 0x20
-        VK_RETURN = 0x0D
         KEYEVENTF_KEYUP = 0x0002
         u32.keybd_event(VK_SPACE, 0, 0, 0)
         u32.keybd_event(VK_SPACE, 0, KEYEVENTF_KEYUP, 0)
-        time.sleep(0.4)
-
-        # 3) Opsiyonel sifre — SendInput Unicode (klavye duzeninden bagimsiz)
-        password = os.getenv("UNLOCK_PASSWORD", "").strip()
-        msg_extra = ""
-        if password:
-            try:
-                from handlers.screen import _UNICODE_TYPE_OK, send_unicode_char  # type: ignore
-
-                if _UNICODE_TYPE_OK:
-                    for ch in password:
-                        send_unicode_char(ch)
-                    time.sleep(0.15)
-                    u32.keybd_event(VK_RETURN, 0, 0, 0)
-                    u32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
-                    msg_extra = " Sifre denendi."
-            except Exception:
-                logger.exception("password type hatasi")
 
         await reply(
             update,
-            "🔓 Wake + Space gonderildi." + msg_extra
-            + "\n_Not: secure desktop blokayabilir; cogunlukla sifreyi elle girmen gerekir._",
+            "🔓 Wake + Space gonderildi (servis yok, sadece uyandirma)." + fallback_note,
             parse_mode="Markdown",
         )
     except Exception as e:
-        logger.exception("unlock hatasi")
+        logger.exception("unlock fallback hatasi")
         await reply(update, f"Unlock hatasi: {e}")
 
 

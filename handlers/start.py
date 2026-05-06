@@ -42,7 +42,7 @@ HELP = (
     "/uptime — Acik kalma suresi\n"
     "/battery — Pil durumu\n"
     "/lock — Ekrani kilitle <i>(secure desktop — bot bypass edemez)</i>\n"
-    "/unlock — Best-effort unlock (sadece uyandir)\n"
+    "/unlock — Lock ekraninda sifreyi gir <i>(servis kuruluysa gercek, yoksa wake)</i>\n"
     "/screen_off — Soft-lock: sadece monitoru kapat (bot tam erisimde)\n"
     "/screen_on — Monitoru uyandir\n"
     "/uyari [METIN] — Tam ekran modern uyari overlay\n"
