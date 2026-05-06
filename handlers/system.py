@@ -200,6 +200,63 @@ async def cmd_uyari(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @authorized
+async def cmd_screen_off(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sadece monitoru kapatir — PC kilitli degil, bot tam kontrole sahip.
+
+    /lock'in aksine secure desktop'a gecmez, bu yuzden /screen_on ile geri
+    acilabilir ve aradan klavye/mouse komutlari calisir.
+    """
+    if sys.platform != "win32":
+        await reply(update, "Sadece Windows'ta destekleniyor.")
+        return
+    try:
+        HWND_BROADCAST = 0xFFFF
+        WM_SYSCOMMAND = 0x0112
+        SC_MONITORPOWER = 0xF170
+        # 2 = off, 1 = low power, -1 = on
+        ctypes.windll.user32.SendMessageW(
+            HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2
+        )
+        await reply(
+            update,
+            "💤 Monitor kapatildi.\n"
+            "_Not: PC kilitli degil — bot full erisime sahip. /screen\\_on ile uyandir._",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.exception("screen_off hatasi")
+        await reply(update, f"Hata: {e}")
+
+
+@authorized
+async def cmd_screen_on(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Monitoru uyandir (mouse jiggle + SendMessage -1)."""
+    if sys.platform != "win32":
+        await reply(update, "Sadece Windows'ta destekleniyor.")
+        return
+    try:
+        u32 = ctypes.windll.user32
+
+        class _POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        pt = _POINT()
+        u32.GetCursorPos(ctypes.byref(pt))
+        u32.SetCursorPos(pt.x + 3, pt.y + 3)
+        time.sleep(0.05)
+        u32.SetCursorPos(pt.x, pt.y)
+        # SC_MONITORPOWER -1 (uint olarak 0xFFFFFFFF) bazi surumlerde lazim
+        try:
+            u32.SendMessageW(0xFFFF, 0x0112, 0xF170, -1)
+        except Exception:
+            pass
+        await reply(update, "🌞 Monitor uyandirildi.")
+    except Exception as e:
+        logger.exception("screen_on hatasi")
+        await reply(update, f"Hata: {e}")
+
+
+@authorized
 async def cmd_lock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if sys.platform != "win32":
         await reply(update, "Sadece Windows'ta destekleniyor.")

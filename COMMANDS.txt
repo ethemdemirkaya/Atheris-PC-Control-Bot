@@ -18,6 +18,8 @@ uptime - Bilgisayar ne kadardir acik
 battery - Pil yuzdesi ve durumu
 lock - Ekrani kilitle
 unlock - Best-effort unlock (ekrani uyandir, swipe gec, opsiyonel sifre)
+screen_off - Soft-lock: sadece monitoru kapat (bot tam erisimde)
+screen_on - Monitoru uyandir
 uyari - Tam ekran modern uyari overlay (yazi uzunluguna gore olcekli)
 sleep - Uyku moduna al
 logoff - Oturumu kapat (onayli)

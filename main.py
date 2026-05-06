@@ -49,6 +49,8 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("battery", h_system.cmd_battery))
     app.add_handler(CommandHandler("lock", h_system.cmd_lock))
     app.add_handler(CommandHandler("unlock", h_system.cmd_unlock))
+    app.add_handler(CommandHandler("screen_off", h_system.cmd_screen_off))
+    app.add_handler(CommandHandler("screen_on", h_system.cmd_screen_on))
     app.add_handler(CommandHandler("uyari", h_system.cmd_uyari))
     app.add_handler(CommandHandler("sleep", h_system.cmd_sleep))
     app.add_handler(CommandHandler("logoff", h_system.cmd_logoff))
