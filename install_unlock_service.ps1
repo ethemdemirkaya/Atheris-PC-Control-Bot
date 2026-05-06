@@ -18,10 +18,18 @@ $transcriptPath = Join-Path $env:TEMP "atheris_install_unlock.log"
 try { Stop-Transcript | Out-Null } catch {}
 Start-Transcript -Path $transcriptPath -Force | Out-Null
 $ServiceName = "AtherisUnlock"
+# $PSScriptRoot bos olabilir (script dosya olarak calistirilmadiysa). Fallback: cwd.
 $ProjectDir = $PSScriptRoot
+if (-not $ProjectDir -and $MyInvocation.MyCommand.Path) {
+    $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if (-not $ProjectDir) {
+    $ProjectDir = (Get-Location).Path
+}
 $ScriptPath = Join-Path $ProjectDir "unlock_service.py"
 $NssmDir = Join-Path $ProjectDir "tools\nssm"
 $NssmExe = Join-Path $NssmDir "win64\nssm.exe"
+Write-Host "ProjectDir: $ProjectDir"
 
 function Test-Admin {
     $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -30,8 +38,7 @@ function Test-Admin {
 }
 
 if (-not (Test-Admin)) {
-    Write-Error "Yonetici olarak calistirman gerek. PowerShell'i 'Run as Administrator' ile ac."
-    exit 1
+    throw "Yonetici olarak calistirman gerek. PowerShell'i 'Run as Administrator' ile ac, sonra: cd '$ProjectDir'; .\install_unlock_service.ps1"
 }
 
 if ($Uninstall) {
