@@ -1,0 +1,37 @@
+start - Karsilama mesaji
+help - Komut listesi
+menu - Interaktif inline menu
+screenshot - Ekran goruntusu (opsiyonel monitor index)
+click - Sol tik (argsiz mevcut konum, ya da X Y)
+rclick - Sag tik (argsiz mevcut konum, ya da X Y)
+dclick - Cift tik (argsiz mevcut konum, ya da X Y)
+type - Klavye ile yaz (clipboard yontemi, hizli)
+write - Yazinin her harfine tek tek bas
+key - Tek tus veya kombinasyon (enter, ctrl+c, alt+f4)
+hold - MOD+KEY [N] modifier basiliyken tusa N kez bas (alt+tab 2)
+scroll - Mouse scroll (+ yukari, - asagi)
+mouse_pos - Mouse konumu + anotasyonlu screenshot
+move - Mouse'u X Y koordinatina tasi
+move_rel - Mouse'u DX DY kadar goreceli kaydir
+sysinfo - CPU RAM disk kullanimi
+uptime - Bilgisayar ne kadardir acik
+battery - Pil yuzdesi ve durumu
+lock - Ekrani kilitle
+sleep - Uyku moduna al
+logoff - Oturumu kapat (onayli)
+shutdown - Bilgisayari kapat (onayli, opsiyonel saniye)
+restart - Bilgisayari yeniden baslat (onayli)
+cancel_shutdown - Bekleyen kapanmayi iptal et
+run - Uygulama baslat (notepad, calc, chrome...)
+processes - En cok kaynak kullanan 10 process
+kill - Process'i ad veya PID ile sonlandir
+find - Process adinda arama
+volume - Ses seviyesini goster veya 0-100 ayarla
+mute - Sesi kapat
+unmute - Sesi ac
+playpause - Calmayi durdur veya devam ettir
+next_track - Sonraki sarki
+prev_track - Onceki sarki
+webcam - Webcam'den foto cek
+files - Klasor icerigini listele
+download - Bir dosyayi Telegram uzerinden gonder

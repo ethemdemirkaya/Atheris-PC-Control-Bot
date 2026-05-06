@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from io import BytesIO
 
 from telegram import Update
@@ -85,17 +86,27 @@ async def cmd_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await msg.reply_photo(photo=buf, caption=f"📸 Monitor {monitor}")
 
 
+def _coords_or_current(args) -> tuple[int, int, bool]:
+    """Args bossa mouse'un mevcut konumunu, doluysa parse edilmis (X, Y) doner.
+    Ucuncu deger: koordinat verildi mi?"""
+    if args and len(args) >= 2:
+        return parse_int(args[0]), parse_int(args[1]), True
+    x, y = pyautogui.position()
+    return x, y, False
+
+
 @authorized
 async def cmd_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _ensure_gui(update):
         return
-    if not context.args or len(context.args) < 2:
-        await reply(update, "Kullanim: /click X Y")
-        return
-    x, y = parse_int(context.args[0]), parse_int(context.args[1])
     try:
-        pyautogui.click(x=x, y=y)
-        await reply(update, f"🖱️ Sol tik: ({x}, {y})")
+        x, y, given = _coords_or_current(context.args)
+        if given:
+            pyautogui.click(x=x, y=y)
+        else:
+            pyautogui.click()
+        suffix = "" if given else " (mevcut konum)"
+        await reply(update, f"🖱️ Sol tik{suffix}: ({x}, {y})")
     except Exception as e:
         logger.exception("click hatasi")
         await reply(update, f"Tik hatasi: {e}")
@@ -105,13 +116,14 @@ async def cmd_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_rclick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _ensure_gui(update):
         return
-    if not context.args or len(context.args) < 2:
-        await reply(update, "Kullanim: /rclick X Y")
-        return
-    x, y = parse_int(context.args[0]), parse_int(context.args[1])
     try:
-        pyautogui.rightClick(x=x, y=y)
-        await reply(update, f"🖱️ Sag tik: ({x}, {y})")
+        x, y, given = _coords_or_current(context.args)
+        if given:
+            pyautogui.rightClick(x=x, y=y)
+        else:
+            pyautogui.rightClick()
+        suffix = "" if given else " (mevcut konum)"
+        await reply(update, f"🖱️ Sag tik{suffix}: ({x}, {y})")
     except Exception as e:
         await reply(update, f"Tik hatasi: {e}")
 
@@ -120,13 +132,14 @@ async def cmd_rclick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_dclick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _ensure_gui(update):
         return
-    if not context.args or len(context.args) < 2:
-        await reply(update, "Kullanim: /dclick X Y")
-        return
-    x, y = parse_int(context.args[0]), parse_int(context.args[1])
     try:
-        pyautogui.doubleClick(x=x, y=y)
-        await reply(update, f"🖱️ Cift tik: ({x}, {y})")
+        x, y, given = _coords_or_current(context.args)
+        if given:
+            pyautogui.doubleClick(x=x, y=y)
+        else:
+            pyautogui.doubleClick()
+        suffix = "" if given else " (mevcut konum)"
+        await reply(update, f"🖱️ Cift tik{suffix}: ({x}, {y})")
     except Exception as e:
         await reply(update, f"Tik hatasi: {e}")
 
@@ -157,6 +170,33 @@ async def cmd_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await reply(update, f"⌨️ Yazildi: {text[:80]}{'...' if len(text) > 80 else ''}")
     except Exception as e:
         logger.exception("type hatasi")
+        await reply(update, f"Yazma hatasi: {e}")
+
+
+@authorized
+async def cmd_write(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Yazinin her harfine tek tek bas. Unicode harfleri clipboard ile yapistir."""
+    if not await _ensure_gui(update):
+        return
+    if not context.args:
+        await reply(update, "Kullanim: /write METIN")
+        return
+    text = " ".join(context.args)
+    interval = 0.04  # her harf arasi gecikme
+    try:
+        for ch in text:
+            if _can_ascii(ch):
+                pyautogui.write(ch, interval=0)
+            elif pyperclip is not None:
+                pyperclip.copy(ch)
+                pyautogui.hotkey("ctrl", "v")
+            else:
+                # pyperclip yok ve unicode → atla
+                continue
+            time.sleep(interval)
+        await reply(update, f"✍️ Yazildi: {text[:80]}{'...' if len(text) > 80 else ''}")
+    except Exception as e:
+        logger.exception("write hatasi")
         await reply(update, f"Yazma hatasi: {e}")
 
 
@@ -195,6 +235,54 @@ async def cmd_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         logger.exception("key hatasi")
         await reply(update, f"Tus hatasi: {e}")
+
+
+@authorized
+async def cmd_hold(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Modifier(ler)i basili tutup ana tusa N kez basip birak.
+
+    Ornek: /hold alt+tab 2  →  Alt basili, Tab x2, sonra Alt birak.
+    """
+    if not await _ensure_gui(update):
+        return
+    if not context.args:
+        await reply(
+            update,
+            "Kullanim: /hold MOD+KEY [TEKRAR]\n"
+            "Ornek: /hold alt+tab 2  ya da  /hold ctrl+shift+t 1",
+        )
+        return
+    combo = context.args[0].lower().strip()
+    count = parse_int(context.args[1] if len(context.args) >= 2 else None, 1)
+    count = max(1, min(count, 50))
+    if "+" not in combo:
+        await reply(update, "MOD+KEY formatinda olmali. Ornek: alt+tab")
+        return
+    parts = [p.strip() for p in combo.split("+") if p.strip()]
+    if len(parts) < 2:
+        await reply(update, "En az MOD+KEY ver.")
+        return
+    *mods, key = parts
+    try:
+        for m in mods:
+            pyautogui.keyDown(m)
+        try:
+            for _ in range(count):
+                pyautogui.press(key)
+                time.sleep(0.08)
+        finally:
+            for m in reversed(mods):
+                pyautogui.keyUp(m)
+        await reply(update, f"⌨️ {'+'.join(mods)} basili → {key} x{count}")
+    except Exception as e:
+        # Modifier yukarida birakilmis olabilir — emin olmak icin tekrar release
+        for m in reversed(mods):
+            try:
+                pyautogui.keyUp(m)
+            except Exception:
+                pass
+        logger.exception("hold hatasi")
+        await reply(update, f"Hold hatasi: {e}")
 
 
 @authorized
