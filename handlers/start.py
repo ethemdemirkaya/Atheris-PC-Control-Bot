@@ -27,7 +27,17 @@ HELP = (
     "/type METIN — Klavye ile yaz\n"
     "/key TUS — Tek tus \\(enter, esc, f5, ctrl\\+c\\.\\.\\.\\)\n"
     "/scroll N — Scroll \\(\\+/\\-\\)\n"
-    "/mouse\\_pos — Mouse konumu"
+    "/mouse\\_pos — Mouse konumu\n\n"
+    "*💻 Sistem*\n"
+    "/sysinfo — CPU/RAM/disk\n"
+    "/uptime — Acik kalma suresi\n"
+    "/battery — Pil durumu\n"
+    "/lock — Ekrani kilitle\n"
+    "/sleep — Uyku modu\n"
+    "/logoff — Oturumu kapat \\(onayli\\)\n"
+    "/shutdown \\[saniye\\] — Kapat \\(onayli\\)\n"
+    "/restart \\[saniye\\] — Yeniden baslat \\(onayli\\)\n"
+    "/cancel\\_shutdown — Bekleyen kapanmayi iptal et"
 )
 
 

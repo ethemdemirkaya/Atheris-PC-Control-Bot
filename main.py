@@ -16,6 +16,7 @@ from utils.logger import setup_logging
 def _build_app() -> Application:
     from handlers import start as h_start
     from handlers import screen as h_screen
+    from handlers import system as h_system
 
     app = Application.builder().token(CONFIG.bot_token).build()
 
@@ -32,6 +33,18 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("key", h_screen.cmd_key))
     app.add_handler(CommandHandler("scroll", h_screen.cmd_scroll))
     app.add_handler(CommandHandler("mouse_pos", h_screen.cmd_mouse_pos))
+
+    # --- Sistem ---
+    app.add_handler(CommandHandler("sysinfo", h_system.cmd_sysinfo))
+    app.add_handler(CommandHandler("uptime", h_system.cmd_uptime))
+    app.add_handler(CommandHandler("battery", h_system.cmd_battery))
+    app.add_handler(CommandHandler("lock", h_system.cmd_lock))
+    app.add_handler(CommandHandler("sleep", h_system.cmd_sleep))
+    app.add_handler(CommandHandler("logoff", h_system.cmd_logoff))
+    app.add_handler(CommandHandler("shutdown", h_system.cmd_shutdown))
+    app.add_handler(CommandHandler("restart", h_system.cmd_restart))
+    app.add_handler(CommandHandler("cancel_shutdown", h_system.cmd_cancel_shutdown))
+    app.add_handler(h_system.callback_handler())
 
     # --- Hata yakalama ---
     app.add_error_handler(_on_error)
