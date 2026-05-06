@@ -14,6 +14,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$transcriptPath = Join-Path $env:TEMP "atheris_install_unlock.log"
+try { Stop-Transcript | Out-Null } catch {}
+Start-Transcript -Path $transcriptPath -Force | Out-Null
 $ServiceName = "AtherisUnlock"
 $ProjectDir = $PSScriptRoot
 $ScriptPath = Join-Path $ProjectDir "unlock_service.py"
@@ -44,14 +47,33 @@ if ($Uninstall) {
     exit 0
 }
 
-# Python'u bul
+# Python'u bul — WindowsApps stub'i SYSTEM olarak calismaz, gercek install'i tercih et
 $python = $null
-foreach ($cand in @("python.exe", "py.exe")) {
-    $found = Get-Command $cand -ErrorAction SilentlyContinue
-    if ($found) { $python = $found.Source; break }
+$candidates = @(
+    "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+    "$env:ProgramFiles\Python313\python.exe",
+    "$env:ProgramFiles\Python312\python.exe",
+    "$env:ProgramFiles\Python311\python.exe",
+    "C:\Python313\python.exe",
+    "C:\Python312\python.exe",
+    "C:\Python311\python.exe"
+)
+foreach ($c in $candidates) {
+    if (Test-Path $c) { $python = $c; break }
+}
+# Son care: PATH'tan al ama WindowsApps yolunu reddet
+if (-not $python) {
+    foreach ($cand in @("python.exe", "py.exe")) {
+        $found = Get-Command $cand -ErrorAction SilentlyContinue
+        if ($found -and $found.Source -notmatch "WindowsApps") {
+            $python = $found.Source; break
+        }
+    }
 }
 if (-not $python) {
-    Write-Error "python.exe PATH'te yok. Python kurulu degil mi?"
+    Write-Error "Gercek python.exe bulunamadi. python.org'dan kur ve tekrar dene (Microsoft Store Python LocalSystem'de calismaz)."
     exit 1
 }
 Write-Host "Python: $python"
@@ -100,3 +122,5 @@ Start-Sleep -Seconds 2
 Write-Host ""
 Write-Host "Bitti. .env dosyasinda UNLOCK_PASSWORD ve UNLOCK_SERVICE_SECRET dolu olmali."
 Write-Host "Ayni UNLOCK_SERVICE_SECRET hem botta hem servisin .env'inde gerekli (ayni dosya zaten)."
+
+try { Stop-Transcript | Out-Null } catch {}
