@@ -73,6 +73,7 @@ SHARED_SECRET = os.getenv("UNLOCK_SERVICE_SECRET", "").strip()
 # --- Win32 ---
 k32 = ctypes.windll.kernel32
 u32 = ctypes.windll.user32
+advapi32 = ctypes.windll.advapi32
 
 # Pipe / file API
 GENERIC_ALL = 0x10000000
@@ -82,6 +83,39 @@ PIPE_READMODE_MESSAGE = 0x02
 PIPE_WAIT = 0x00
 INVALID_HANDLE = -1
 ERROR_PIPE_CONNECTED = 535
+
+
+# Pipe'i interactive user'a da acan SECURITY_ATTRIBUTES uret
+# SDDL: SYSTEM=Full, BuiltinAdmins=Full, Interactive Users=Read+Write
+class _SECURITY_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [
+        ("nLength", ctypes.c_ulong),
+        ("lpSecurityDescriptor", ctypes.c_void_p),
+        ("bInheritHandle", ctypes.c_int),
+    ]
+
+
+advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+    ctypes.c_wchar_p,
+    ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_void_p),
+    ctypes.POINTER(ctypes.c_ulong),
+]
+advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.restype = ctypes.c_int
+
+
+def _build_pipe_sa() -> _SECURITY_ATTRIBUTES | None:
+    sddl = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
+    psd = ctypes.c_void_p(0)
+    sz = ctypes.c_ulong(0)
+    ok = advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        sddl, 1, ctypes.byref(psd), ctypes.byref(sz)
+    )
+    if not ok:
+        log.error("SDDL convert hata: %s", k32.GetLastError())
+        return None
+    sa = _SECURITY_ATTRIBUTES(ctypes.sizeof(_SECURITY_ATTRIBUTES), psd.value, 0)
+    return sa
 
 # SendInput
 INPUT_KEYBOARD = 1
@@ -209,6 +243,9 @@ def serve() -> int:
     log.info("Servis baslatiliyor — pipe=%s, secret=%s", PIPE_NAME, "var" if SHARED_SECRET else "YOK")
     if not SHARED_SECRET:
         log.warning("UNLOCK_SERVICE_SECRET bos — istemci dogrulamasi yok!")
+    sa = _build_pipe_sa()
+    if sa is None:
+        log.error("Pipe SECURITY_ATTRIBUTES uretilemedi — interactive kullanici pipe'a erisemeyecek!")
     while True:
         pipe = k32.CreateNamedPipeW(
             PIPE_NAME,
@@ -218,7 +255,7 @@ def serve() -> int:
             4096,
             4096,
             0,
-            None,
+            ctypes.byref(sa) if sa is not None else None,
         )
         if pipe == INVALID_HANDLE or pipe == 0:
             log.error("CreateNamedPipeW hata: %s", k32.GetLastError())
