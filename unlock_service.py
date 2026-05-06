@@ -215,19 +215,42 @@ def _send_unicode_char(ch: str) -> None:
         u32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
 
 
+VK_ESCAPE = 0x1B
+
+
 def do_unlock_inplace(password: str) -> tuple[bool, str]:
     """Bu thread'de direkt unlock yap. Sadece child process'te (user session'da
-    SYSTEM token ile) calisir; servisin kendisi Session 0'da bunu basaramaz."""
+    SYSTEM token ile) calisir; servisin kendisi Session 0'da bunu basaramaz.
+
+    Win11 sequence: Enter (overlay kaldir) → Esc (eski hata popup) →
+    Backspace*40 (alani temizle) → password → Enter.
+    Space gondermiyoruz cunku login screen'de zaten focus password alanina
+    olur ve Space sifrenin basina karakter olarak gider.
+    """
     saved, desk = _switch_to_winlogon()
     if not desk:
         return False, "Winlogon desktop'a gecilemedi"
     try:
-        _send_vk(VK_SPACE)
-        time.sleep(0.4)
+        log.info("Inject baslangic — pw_len=%d", len(password))
+        # 1) Lock screen overlay'i kaldir (varsa)
+        _send_vk(VK_RETURN)
+        time.sleep(0.5)
+        # 2) Eski yanlis-deneme popup'i varsa kapat
+        _send_vk(VK_ESCAPE)
+        time.sleep(0.2)
+        # 3) Password alanindaki olasi kalintilari temizle
+        for _ in range(40):
+            _send_vk(VK_BACK)
+        time.sleep(0.1)
+        log.info("Inject: alan temizlendi, sifre yazilacak")
+        # 4) Sifreyi karakter karakter yaz
         for ch in password:
             _send_unicode_char(ch)
-        time.sleep(0.15)
+            time.sleep(0.008)
+        time.sleep(0.25)
+        # 5) Submit
         _send_vk(VK_RETURN)
+        log.info("Inject tamamlandi — Enter gonderildi")
         return True, "OK"
     finally:
         _restore_desktop(saved, desk)
@@ -475,7 +498,9 @@ def _inject_main(tmp_path: str) -> int:
     """Child process modu — user session'da SYSTEM token ile direkt inject."""
     p = Path(tmp_path)
     try:
-        password = p.read_text(encoding="utf-8")
+        # rstrip ile sadece trailing CR/LF kaldir; sifrenin icindeki bilincli
+        # bosluk veya newline'a dokunma
+        password = p.read_text(encoding="utf-8").rstrip("\r\n")
     except Exception:
         log.exception("Inject child: temp okunamadi")
         return 10
@@ -484,6 +509,7 @@ def _inject_main(tmp_path: str) -> int:
             p.unlink()
         except OSError:
             pass
+    log.info("Inject child basladi (pw_len=%d)", len(password))
     ok, msg = do_unlock_inplace(password)
     log.info("Inject child sonuc: ok=%s msg=%s", ok, msg)
     return 0 if ok else 1
