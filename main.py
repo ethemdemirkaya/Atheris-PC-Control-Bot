@@ -7,7 +7,7 @@ import sys
 import traceback
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from config import CONFIG
 from utils.logger import setup_logging
@@ -19,6 +19,7 @@ def _build_app() -> Application:
     from handlers import system as h_system
     from handlers import apps as h_apps
     from handlers import media as h_media
+    from handlers import files as h_files
 
     app = Application.builder().token(CONFIG.bot_token).build()
 
@@ -62,6 +63,11 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("next_track", h_media.cmd_next))
     app.add_handler(CommandHandler("prev_track", h_media.cmd_prev))
     app.add_handler(CommandHandler("webcam", h_media.cmd_webcam))
+
+    # --- Dosya ---
+    app.add_handler(CommandHandler("files", h_files.cmd_files))
+    app.add_handler(CommandHandler("download", h_files.cmd_download))
+    app.add_handler(MessageHandler(filters.Document.ALL | filters.PHOTO, h_files.on_incoming_file))
 
     # --- Hata yakalama ---
     app.add_error_handler(_on_error)

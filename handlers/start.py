@@ -47,7 +47,11 @@ HELP = (
     "/volume \\[0\\-100\\] — Ses seviyesi\n"
     "/mute /unmute — Sessiz / Ac\n"
     "/playpause /next\\_track /prev\\_track\n"
-    "/webcam — Webcam fotograf"
+    "/webcam — Webcam fotograf\n\n"
+    "*📁 Dosya*\n"
+    "/files \\[yol\\] — Klasor listele\n"
+    "/download YOL — Dosya gonder\n"
+    "_Telegram'dan dosya gonder → Downloads'a kaydedilir_"
 )
 
 
