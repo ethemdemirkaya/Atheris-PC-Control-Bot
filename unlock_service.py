@@ -318,13 +318,13 @@ advapi32.CreateProcessAsUserW.argtypes = [
 ]
 advapi32.CreateProcessAsUserW.restype = ctypes.c_int
 
-wts = ctypes.windll.wtsapi32
-wts.WTSGetActiveConsoleSessionId.restype = ctypes.c_ulong
+# WTSGetActiveConsoleSessionId actually lives in kernel32.dll, not wtsapi32
+k32.WTSGetActiveConsoleSessionId.restype = ctypes.c_ulong
 
 
 def do_unlock_via_user_session(password: str) -> tuple[bool, str]:
     """SYSTEM token'i user session'a aktar, kendini --inject ile spawnla."""
-    session_id = wts.WTSGetActiveConsoleSessionId()
+    session_id = k32.WTSGetActiveConsoleSessionId()
     if session_id == 0xFFFFFFFF:
         return False, "Aktif console session yok"
     if session_id == 0:
