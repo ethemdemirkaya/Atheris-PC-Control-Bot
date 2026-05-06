@@ -75,6 +75,9 @@ async def cmd_battery(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Best-effort unlock: ekrani uyandir, swipe'i gec, opsiyonel sifre yaz.
 
+    pyautogui yerine direkt Win32 (SetCursorPos + keybd_event) — boylece
+    cursor lock ekraninda kose noktada oldugunda FAILSAFE tetiklenmiyor.
+
     UYARI: Windows'un lock ekrani (secure desktop) bot girdisini cogunlukla
     blokar. Bu komut garanti calismaz; en azindan ekrani uyandirir.
     """
@@ -82,37 +85,48 @@ async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await reply(update, "Sadece Windows'ta destekleniyor.")
         return
     try:
-        import pyautogui  # lazy
+        u32 = ctypes.windll.user32
 
-        # 1) Mouse hareketi → ekran uyanir
-        x, y = pyautogui.position()
-        pyautogui.moveTo(x + 5, y + 5, duration=0.05)
-        pyautogui.moveTo(x, y, duration=0.05)
-        # 2) Lock screen'i kaldir (Win10/11 swipe ekrani Space ile gecer)
-        pyautogui.press("space")
+        class _POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        # 1) Mouse jiggle — SetCursorPos pyautogui'yi atlatir, FAILSAFE yok
+        pt = _POINT()
+        u32.GetCursorPos(ctypes.byref(pt))
+        x0, y0 = pt.x, pt.y
+        u32.SetCursorPos(x0 + 5, y0 + 5)
+        time.sleep(0.05)
+        u32.SetCursorPos(x0, y0)
+
+        # 2) Space — Win10/11 lock swipe ekranini gecer
+        VK_SPACE = 0x20
+        VK_RETURN = 0x0D
+        KEYEVENTF_KEYUP = 0x0002
+        u32.keybd_event(VK_SPACE, 0, 0, 0)
+        u32.keybd_event(VK_SPACE, 0, KEYEVENTF_KEYUP, 0)
         time.sleep(0.4)
 
+        # 3) Opsiyonel sifre — SendInput Unicode (klavye duzeninden bagimsiz)
         password = os.getenv("UNLOCK_PASSWORD", "").strip()
         msg_extra = ""
         if password:
             try:
-                # SendInput Unicode → klavye duzeninden bagimsiz
                 from handlers.screen import _UNICODE_TYPE_OK, send_unicode_char  # type: ignore
 
                 if _UNICODE_TYPE_OK:
                     for ch in password:
                         send_unicode_char(ch)
-                else:
-                    pyautogui.write(password, interval=0.02)
+                    time.sleep(0.15)
+                    u32.keybd_event(VK_RETURN, 0, 0, 0)
+                    u32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+                    msg_extra = " Sifre denendi."
             except Exception:
-                pyautogui.write(password, interval=0.02)
-            time.sleep(0.15)
-            pyautogui.press("enter")
-            msg_extra = " Sifre denendi."
+                logger.exception("password type hatasi")
+
         await reply(
             update,
-            "🔓 Wake + space gonderildi." + msg_extra
-            + "\n_Not: secure desktop blokayabilir; sonuc cogunlukla manuel girise bagli._",
+            "🔓 Wake + Space gonderildi." + msg_extra
+            + "\n_Not: secure desktop blokayabilir; cogunlukla sifreyi elle girmen gerekir._",
             parse_mode="Markdown",
         )
     except Exception as e:
