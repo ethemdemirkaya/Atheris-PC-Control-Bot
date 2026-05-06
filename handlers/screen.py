@@ -213,13 +213,104 @@ async def cmd_scroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await reply(update, f"Scroll hatasi: {e}")
 
 
+def _annotated_mouse_screenshot() -> tuple[BytesIO, int, int, int, int]:
+    """Tum sanal masaustunu cek, cursor pozisyonunu crosshair + zoom inset ile isaretle.
+
+    Returns: (png_buf, abs_x, abs_y, screen_w, screen_h)
+    """
+    from PIL import Image, ImageDraw  # lazy
+
+    abs_x, abs_y = pyautogui.position()
+
+    if mss is not None:
+        with mss.mss() as sct:
+            mon = sct.monitors[0]  # 0 = tum sanal masaustu
+            shot = sct.grab(mon)
+            img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+            offset_x = int(mon["left"])
+            offset_y = int(mon["top"])
+    else:
+        img = pyautogui.screenshot()
+        offset_x = offset_y = 0
+
+    cx = abs_x - offset_x
+    cy = abs_y - offset_y
+    cx_clamped = max(0, min(img.width - 1, cx))
+    cy_clamped = max(0, min(img.height - 1, cy))
+
+    draw = ImageDraw.Draw(img)
+    # Tam ekran crosshair
+    draw.line([(cx_clamped, 0), (cx_clamped, img.height)], fill=(255, 0, 0), width=1)
+    draw.line([(0, cy_clamped), (img.width, cy_clamped)], fill=(255, 0, 0), width=1)
+    # Cursor halkasi
+    r = 24
+    draw.ellipse(
+        [cx_clamped - r, cy_clamped - r, cx_clamped + r, cy_clamped + r],
+        outline=(255, 0, 0),
+        width=3,
+    )
+    draw.ellipse(
+        [cx_clamped - 3, cy_clamped - 3, cx_clamped + 3, cy_clamped + 3],
+        fill=(255, 255, 0),
+        outline=(255, 0, 0),
+    )
+
+    # Zoom inset — cursor etrafindaki 200x200 alani 400x400'e nearest scale
+    zsize = 200
+    zdisp = 400
+    x0 = max(0, cx_clamped - zsize // 2)
+    y0 = max(0, cy_clamped - zsize // 2)
+    x1 = min(img.width, x0 + zsize)
+    y1 = min(img.height, y0 + zsize)
+    if x1 - x0 < 10 or y1 - y0 < 10:
+        # Cok kucuk bir bolge — atla
+        pass
+    else:
+        crop = img.crop((x0, y0, x1, y1)).resize((zdisp, zdisp), Image.NEAREST)
+        cdraw = ImageDraw.Draw(crop)
+        sx = zdisp / max(1, x1 - x0)
+        sy = zdisp / max(1, y1 - y0)
+        icx = int((cx_clamped - x0) * sx)
+        icy = int((cy_clamped - y0) * sy)
+        cdraw.line([(icx, 0), (icx, zdisp)], fill=(0, 255, 0), width=2)
+        cdraw.line([(0, icy), (zdisp, icy)], fill=(0, 255, 0), width=2)
+        cdraw.ellipse(
+            [icx - 6, icy - 6, icx + 6, icy + 6],
+            fill=(255, 255, 0),
+            outline=(255, 0, 0),
+            width=2,
+        )
+        # Sol uste yapistir + mavi cerceve
+        img.paste(crop, (10, 10))
+        draw.rectangle([10, 10, 10 + zdisp, 10 + zdisp], outline=(0, 0, 255), width=4)
+        # Inset basligi
+        draw.rectangle([10, 10, 10 + zdisp, 36], fill=(0, 0, 255))
+        draw.text((18, 14), f"ZOOM x{zdisp / zsize:.0f}  ({abs_x}, {abs_y})", fill=(255, 255, 255))
+
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    buf.seek(0)
+    buf.name = "mouse_pos.png"
+    return buf, abs_x, abs_y, img.width, img.height
+
+
 @authorized
 async def cmd_mouse_pos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _ensure_gui(update):
         return
+    msg = update.effective_message
+    if msg is None:
+        return
     try:
-        x, y = pyautogui.position()
-        w, h = pyautogui.size()
-        await reply(update, f"🖱️ Mouse: ({x}, {y})\nEkran: {w}x{h}")
+        buf, x, y, w, h = _annotated_mouse_screenshot()
+        await msg.reply_photo(
+            photo=buf,
+            caption=(
+                f"🖱️ Mouse: ({x}, {y})\n"
+                f"Sanal ekran: {w}x{h}\n"
+                f"Yesil crosshair (inset) = pixel-precise konum"
+            ),
+        )
     except Exception as e:
+        logger.exception("mouse_pos hatasi")
         await reply(update, f"Hata: {e}")
