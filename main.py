@@ -18,6 +18,7 @@ def _build_app() -> Application:
     from handlers import screen as h_screen
     from handlers import system as h_system
     from handlers import apps as h_apps
+    from handlers import media as h_media
 
     app = Application.builder().token(CONFIG.bot_token).build()
 
@@ -52,6 +53,15 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("processes", h_apps.cmd_processes))
     app.add_handler(CommandHandler("kill", h_apps.cmd_kill))
     app.add_handler(CommandHandler("find", h_apps.cmd_find))
+
+    # --- Medya ---
+    app.add_handler(CommandHandler("volume", h_media.cmd_volume))
+    app.add_handler(CommandHandler("mute", h_media.cmd_mute))
+    app.add_handler(CommandHandler("unmute", h_media.cmd_unmute))
+    app.add_handler(CommandHandler("playpause", h_media.cmd_playpause))
+    app.add_handler(CommandHandler("next_track", h_media.cmd_next))
+    app.add_handler(CommandHandler("prev_track", h_media.cmd_prev))
+    app.add_handler(CommandHandler("webcam", h_media.cmd_webcam))
 
     # --- Hata yakalama ---
     app.add_error_handler(_on_error)

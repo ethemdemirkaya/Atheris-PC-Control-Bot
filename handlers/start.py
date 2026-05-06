@@ -42,7 +42,12 @@ HELP = (
     "/run AD — Uygulama baslat\n"
     "/processes — En cok kaynak kullananlar\n"
     "/kill AD\\_veya\\_PID — Process'i kapat\n"
-    "/find ARAMA — Process ara"
+    "/find ARAMA — Process ara\n\n"
+    "*🎵 Medya*\n"
+    "/volume \\[0\\-100\\] — Ses seviyesi\n"
+    "/mute /unmute — Sessiz / Ac\n"
+    "/playpause /next\\_track /prev\\_track\n"
+    "/webcam — Webcam fotograf"
 )
 
 
