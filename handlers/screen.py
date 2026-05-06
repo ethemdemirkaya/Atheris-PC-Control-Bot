@@ -39,6 +39,105 @@ except Exception:  # pragma: no cover
     mss = None  # type: ignore
 
 
+# --- Windows SendInput Unicode typer (klavye duzeninden bagimsiz) ---
+import sys
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    _PUL = ctypes.POINTER(ctypes.c_ulong)
+
+    class _KEYBDINPUT(ctypes.Structure):
+        _fields_ = [
+            ("wVk", ctypes.c_ushort),
+            ("wScan", ctypes.c_ushort),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", _PUL),
+        ]
+
+    class _MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.c_long),
+            ("dy", ctypes.c_long),
+            ("mouseData", ctypes.c_ulong),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", _PUL),
+        ]
+
+    class _HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [
+            ("uMsg", ctypes.c_ulong),
+            ("wParamL", ctypes.c_short),
+            ("wParamH", ctypes.c_ushort),
+        ]
+
+    class _INPUT_I(ctypes.Union):
+        _fields_ = [("ki", _KEYBDINPUT), ("mi", _MOUSEINPUT), ("hi", _HARDWAREINPUT)]
+
+    class _INPUT(ctypes.Structure):
+        _fields_ = [("type", ctypes.c_ulong), ("ii", _INPUT_I)]
+
+    _INPUT_KEYBOARD = 1
+    _KEYEVENTF_KEYUP = 0x0002
+    _KEYEVENTF_UNICODE = 0x0004
+    _VK_RETURN = 0x0D
+    _VK_TAB = 0x09
+    _VK_BACK = 0x08
+
+    _user32 = ctypes.windll.user32
+    _SendInput = _user32.SendInput
+    _SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(_INPUT), ctypes.c_int]
+    _SendInput.restype = wintypes.UINT
+
+    def _send_vk(vk: int) -> None:
+        extra = ctypes.c_ulong(0)
+        down = _INPUT(type=_INPUT_KEYBOARD)
+        down.ii.ki = _KEYBDINPUT(vk, 0, 0, 0, ctypes.pointer(extra))
+        up = _INPUT(type=_INPUT_KEYBOARD)
+        up.ii.ki = _KEYBDINPUT(vk, 0, _KEYEVENTF_KEYUP, 0, ctypes.pointer(extra))
+        _SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
+        _SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+
+    def _send_unicode_unit(unit: int) -> None:
+        """Tek bir UTF-16 code unit gonder (BMP karakteri tek seferde olur)."""
+        extra = ctypes.c_ulong(0)
+        down = _INPUT(type=_INPUT_KEYBOARD)
+        down.ii.ki = _KEYBDINPUT(0, unit, _KEYEVENTF_UNICODE, 0, ctypes.pointer(extra))
+        up = _INPUT(type=_INPUT_KEYBOARD)
+        up.ii.ki = _KEYBDINPUT(
+            0, unit, _KEYEVENTF_UNICODE | _KEYEVENTF_KEYUP, 0, ctypes.pointer(extra)
+        )
+        _SendInput(1, ctypes.byref(down), ctypes.sizeof(down))
+        _SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
+
+    def send_unicode_char(ch: str) -> None:
+        """Tek karakter gonder. \\n → Enter, \\t → Tab. Surrogate pair'leri destekler."""
+        if ch == "\n":
+            _send_vk(_VK_RETURN)
+            return
+        if ch == "\t":
+            _send_vk(_VK_TAB)
+            return
+        if ch == "\b":
+            _send_vk(_VK_BACK)
+            return
+        # UTF-16 LE encode et — BMP disi karakterler (emoji vb.) icin surrogate pair olur
+        encoded = ch.encode("utf-16-le")
+        for i in range(0, len(encoded), 2):
+            unit = encoded[i] | (encoded[i + 1] << 8)
+            _send_unicode_unit(unit)
+
+    _UNICODE_TYPE_OK = True
+else:
+    _UNICODE_TYPE_OK = False
+
+    def send_unicode_char(ch: str) -> None:  # type: ignore[no-redef]
+        raise RuntimeError("Sadece Windows'ta destekleniyor.")
+
+
 async def _ensure_gui(update: Update) -> bool:
     if not _PYAUTOGUI_OK:
         await reply(update, f"GUI otomasyonu yuklenemedi: {_PYAUTOGUI_ERR}")
@@ -154,6 +253,7 @@ def _can_ascii(text: str) -> bool:
 
 @authorized
 async def cmd_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Hizli yazma — SendInput Unicode (klavye duzeninden bagimsiz)."""
     if not await _ensure_gui(update):
         return
     if not context.args:
@@ -161,12 +261,15 @@ async def cmd_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     text = " ".join(context.args)
     try:
-        if _can_ascii(text) or pyperclip is None:
-            pyautogui.write(text, interval=0.01)
-        else:
-            # Turkce/Unicode → clipboard ustunden yapistir
+        if _UNICODE_TYPE_OK:
+            for ch in text:
+                send_unicode_char(ch)
+        elif pyperclip is not None:
+            # Windows disi platform fallback
             pyperclip.copy(text)
             pyautogui.hotkey("ctrl", "v")
+        else:
+            pyautogui.write(text, interval=0.01)
         await reply(update, f"⌨️ Yazildi: {text[:80]}{'...' if len(text) > 80 else ''}")
     except Exception as e:
         logger.exception("type hatasi")
@@ -175,25 +278,32 @@ async def cmd_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @authorized
 async def cmd_write(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Yazinin her harfine tek tek bas. Unicode harfleri clipboard ile yapistir."""
+    """Her karakteri tek tek SendInput Unicode ile gonder.
+
+    UTF-8 / Turkce harfler dahil hicbir klavye duzeninden etkilenmez —
+    Windows pencereye dogrudan WM_CHAR olarak Unicode kod noktasi iletir.
+    """
     if not await _ensure_gui(update):
         return
     if not context.args:
         await reply(update, "Kullanim: /write METIN")
         return
     text = " ".join(context.args)
-    interval = 0.04  # her harf arasi gecikme
+    interval = 0.04
     try:
-        for ch in text:
-            if _can_ascii(ch):
-                pyautogui.write(ch, interval=0)
-            elif pyperclip is not None:
-                pyperclip.copy(ch)
-                pyautogui.hotkey("ctrl", "v")
-            else:
-                # pyperclip yok ve unicode → atla
-                continue
-            time.sleep(interval)
+        if _UNICODE_TYPE_OK:
+            for ch in text:
+                send_unicode_char(ch)
+                time.sleep(interval)
+        else:
+            # Fallback (Windows disi)
+            for ch in text:
+                if _can_ascii(ch):
+                    pyautogui.write(ch, interval=0)
+                elif pyperclip is not None:
+                    pyperclip.copy(ch)
+                    pyautogui.hotkey("ctrl", "v")
+                time.sleep(interval)
         await reply(update, f"✍️ Yazildi: {text[:80]}{'...' if len(text) > 80 else ''}")
     except Exception as e:
         logger.exception("write hatasi")
