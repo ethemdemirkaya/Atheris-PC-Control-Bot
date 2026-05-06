@@ -17,6 +17,7 @@ def _build_app() -> Application:
     from handlers import start as h_start
     from handlers import screen as h_screen
     from handlers import system as h_system
+    from handlers import apps as h_apps
 
     app = Application.builder().token(CONFIG.bot_token).build()
 
@@ -45,6 +46,12 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("restart", h_system.cmd_restart))
     app.add_handler(CommandHandler("cancel_shutdown", h_system.cmd_cancel_shutdown))
     app.add_handler(h_system.callback_handler())
+
+    # --- Uygulamalar ---
+    app.add_handler(CommandHandler("run", h_apps.cmd_run))
+    app.add_handler(CommandHandler("processes", h_apps.cmd_processes))
+    app.add_handler(CommandHandler("kill", h_apps.cmd_kill))
+    app.add_handler(CommandHandler("find", h_apps.cmd_find))
 
     # --- Hata yakalama ---
     app.add_error_handler(_on_error)

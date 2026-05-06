@@ -37,7 +37,12 @@ HELP = (
     "/logoff — Oturumu kapat \\(onayli\\)\n"
     "/shutdown \\[saniye\\] — Kapat \\(onayli\\)\n"
     "/restart \\[saniye\\] — Yeniden baslat \\(onayli\\)\n"
-    "/cancel\\_shutdown — Bekleyen kapanmayi iptal et"
+    "/cancel\\_shutdown — Bekleyen kapanmayi iptal et\n\n"
+    "*🚀 Uygulamalar*\n"
+    "/run AD — Uygulama baslat\n"
+    "/processes — En cok kaynak kullananlar\n"
+    "/kill AD\\_veya\\_PID — Process'i kapat\n"
+    "/find ARAMA — Process ara"
 )
 
 
