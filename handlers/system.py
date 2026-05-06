@@ -149,10 +149,10 @@ async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             return
         # Servis yoksa / hata varsa fallback'a dus, kullaniciya nedeni bildir
         logger.info("Unlock servisi reddetti: %s — fallback'a dusuluyor", msg)
-        fallback_note = f"\n_Servis: {msg}_"
+        fallback_note = f"\nServis cevabi: {msg}"
     else:
         fallback_note = (
-            "\n_Gercek unlock icin SETUP\\_UNLOCK\\_SERVICE.md'ye bak — LocalSystem servisi kurulmali._"
+            "\nGercek unlock icin SETUP_UNLOCK_SERVICE.md'ye bak — LocalSystem servisi + UNLOCK_SERVICE_SECRET gerekli."
         )
 
     # --- Fallback: wake jiggle + Space (sadece uyandirma) ---
@@ -177,7 +177,6 @@ async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await reply(
             update,
             "🔓 Wake + Space gonderildi (servis yok, sadece uyandirma)." + fallback_note,
-            parse_mode="Markdown",
         )
     except Exception as e:
         logger.exception("unlock fallback hatasi")
