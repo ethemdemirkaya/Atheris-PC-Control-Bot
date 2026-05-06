@@ -10,7 +10,6 @@ import os
 import shlex
 import subprocess
 import sys
-import threading
 import time
 
 import psutil
@@ -123,24 +122,67 @@ async def cmd_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 @authorized
 async def cmd_uyari(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Ekrana topmost uyari kutusu cikar. Bot bloke olmasin diye ayri thread."""
-    if sys.platform != "win32":
-        await reply(update, "Sadece Windows'ta destekleniyor.")
+    """Tam ekran modern uyari overlay'i. Subprocess ile ayri tkinter penceresi."""
+    import tempfile
+    from pathlib import Path
+
+    from config import CONFIG
+
+    text = (
+        " ".join(context.args).strip()
+        if context.args
+        else "DIKKAT! Bu PC sahibi tarafindan kontrol ediliyor."
+    )
+
+    script = CONFIG.project_root / "utils" / "show_uyari.py"
+    if not script.exists():
+        await reply(update, f"show_uyari.py bulunamadi: {script}")
         return
-    text = " ".join(context.args).strip() if context.args else "⚠️ Dikkat! PC sahibi tarafindan kontrol ediliyor."
-    title = "Atheris Uyari"
-    # MB_OK | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND | MB_SYSTEMMODAL
-    flags = 0x00000000 | 0x00000030 | 0x00040000 | 0x00010000 | 0x00001000
 
-    def _show() -> None:
-        try:
-            ctypes.windll.user32.MessageBoxW(0, text, title, flags)
-        except Exception:
-            logger.exception("MessageBoxW hatasi")
+    # Console flash olmasin diye pythonw.exe varsa onu kullan
+    exe = sys.executable
+    if sys.platform == "win32" and exe.lower().endswith("python.exe"):
+        candidate = Path(exe).with_name("pythonw.exe")
+        if candidate.exists():
+            exe = str(candidate)
 
-    threading.Thread(target=_show, daemon=True).start()
-    preview = text if len(text) <= 100 else text[:97] + "..."
-    await reply(update, f"📢 Uyari gosterildi: {preview}")
+    creationflags = 0
+    if sys.platform == "win32":
+        # CREATE_NEW_PROCESS_GROUP=0x200, CREATE_NO_WINDOW=0x08000000, DETACHED_PROCESS=0x08
+        creationflags = 0x00000200 | 0x08000000
+
+    tmp_path: Path | None = None
+    try:
+        tf = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            delete=False,
+            suffix=".txt",
+            prefix="atheris_uyari_",
+        )
+        tf.write(text)
+        tf.close()
+        tmp_path = Path(tf.name)
+
+        subprocess.Popen(
+            [exe, str(script), str(tmp_path)],
+            shell=False,
+            close_fds=True,
+            creationflags=creationflags,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # tmp_path subprocess tarafindan okunduktan sonra silinir
+        preview = text if len(text) <= 100 else text[:97] + "..."
+        await reply(update, f"📢 Tam ekran uyari gosterildi: {preview}")
+    except Exception as e:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+        logger.exception("uyari hatasi")
+        await reply(update, f"Hata: {e}")
 
 
 @authorized

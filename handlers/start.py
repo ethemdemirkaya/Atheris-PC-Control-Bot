@@ -39,7 +39,7 @@ HELP = (
     "/battery — Pil durumu\n"
     "/lock — Ekrani kilitle\n"
     "/unlock — Best\\-effort unlock \\(ekrani uyandir\\)\n"
-    "/uyari \\[METIN\\] — Ekrana topmost uyari kutusu\n"
+    "/uyari \\[METIN\\] — Tam ekran modern uyari overlay\n"
     "/sleep — Uyku modu\n"
     "/logoff — Oturumu kapat \\(onayli\\)\n"
     "/shutdown \\[saniye\\] — Kapat \\(onayli\\)\n"
