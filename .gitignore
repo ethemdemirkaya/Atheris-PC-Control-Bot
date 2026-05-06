@@ -1,0 +1,48 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+*.token
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+build/
+dist/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artefacts
+*.spec
+PCControlBot.exe
+
+# Runtime
+screenshots/
+recordings/
+downloads/
