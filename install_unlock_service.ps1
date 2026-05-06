@@ -110,17 +110,27 @@ if (-not (Test-Path $NssmExe)) {
     Write-Host "NSSM indirildi: $NssmExe"
 }
 
-# Onceki kurulum varsa kaldir
-& $NssmExe stop $ServiceName 2>$null | Out-Null
-& $NssmExe remove $ServiceName confirm 2>$null | Out-Null
+# NSSM cagirilarinda native stderr Stop modunda script'i kirmasin
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+
+# Onceki kurulum varsa once durdur+sil (yoksa hatasi yutuluyor)
+if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+    Write-Host "Eski kurulum kaldiriliyor..."
+    & $NssmExe stop $ServiceName 2>&1 | Out-Null
+    & $NssmExe remove $ServiceName confirm 2>&1 | Out-Null
+}
 
 Write-Host "Servis kuruluyor..."
+$logsDir = Join-Path $ProjectDir "logs"
+if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory -Path $logsDir | Out-Null }
+
 & $NssmExe install $ServiceName $python $ScriptPath
 & $NssmExe set $ServiceName AppDirectory $ProjectDir
 & $NssmExe set $ServiceName ObjectName "LocalSystem"
 & $NssmExe set $ServiceName Start SERVICE_AUTO_START
-& $NssmExe set $ServiceName AppStdout (Join-Path $ProjectDir "logs\unlock_service.stdout.log")
-& $NssmExe set $ServiceName AppStderr (Join-Path $ProjectDir "logs\unlock_service.stderr.log")
+& $NssmExe set $ServiceName AppStdout (Join-Path $logsDir "unlock_service.stdout.log")
+& $NssmExe set $ServiceName AppStderr (Join-Path $logsDir "unlock_service.stderr.log")
 & $NssmExe set $ServiceName Description "Atheris bot unlock helper (Winlogon desktop input injection)"
 
 Write-Host "Servis baslatiliyor..."
@@ -128,6 +138,8 @@ Write-Host "Servis baslatiliyor..."
 
 Start-Sleep -Seconds 2
 & $NssmExe status $ServiceName
+
+$ErrorActionPreference = $prevEAP
 
 Write-Host ""
 Write-Host "Bitti. .env dosyasinda UNLOCK_PASSWORD ve UNLOCK_SERVICE_SECRET dolu olmali."
