@@ -294,19 +294,17 @@ def _annotated_mouse_screenshot() -> tuple[BytesIO, int, int, int, int]:
     return buf, abs_x, abs_y, img.width, img.height
 
 
-@authorized
-async def cmd_mouse_pos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await _ensure_gui(update):
-        return
+async def _send_mouse_pos(update: Update, header: str = "") -> None:
     msg = update.effective_message
     if msg is None:
         return
     try:
         buf, x, y, w, h = _annotated_mouse_screenshot()
+        prefix = (header + "\n") if header else ""
         await msg.reply_photo(
             photo=buf,
             caption=(
-                f"🖱️ Mouse: ({x}, {y})\n"
+                f"{prefix}🖱️ Mouse: ({x}, {y})\n"
                 f"Sanal ekran: {w}x{h}\n"
                 f"Yesil crosshair (inset) = pixel-precise konum"
             ),
@@ -314,3 +312,59 @@ async def cmd_mouse_pos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except Exception as e:
         logger.exception("mouse_pos hatasi")
         await reply(update, f"Hata: {e}")
+
+
+@authorized
+async def cmd_mouse_pos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _ensure_gui(update):
+        return
+    await _send_mouse_pos(update)
+
+
+@authorized
+async def cmd_move(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mouse'u verilen mutlak (X, Y) koordinata tasi, sonra konumu gonder."""
+    if not await _ensure_gui(update):
+        return
+    if not context.args or len(context.args) < 2:
+        await reply(update, "Kullanim: /move X Y")
+        return
+    x, y = parse_int(context.args[0]), parse_int(context.args[1])
+    # 3. argument: hareket suresi (saniye), default 0 (anlik)
+    duration = 0.0
+    if len(context.args) >= 3:
+        try:
+            duration = max(0.0, min(5.0, float(context.args[2])))
+        except ValueError:
+            duration = 0.0
+    try:
+        pyautogui.moveTo(x, y, duration=duration)
+    except Exception as e:
+        logger.exception("move hatasi")
+        await reply(update, f"Hareket hatasi: {e}")
+        return
+    await _send_mouse_pos(update, header=f"➡️ Tasindi: ({x}, {y})")
+
+
+@authorized
+async def cmd_move_rel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Mouse'u (DX, DY) kadar oteler. Negatif degerler sol/yukari."""
+    if not await _ensure_gui(update):
+        return
+    if not context.args or len(context.args) < 2:
+        await reply(update, "Kullanim: /move_rel DX DY  (negatif: sol/yukari)")
+        return
+    dx, dy = parse_int(context.args[0]), parse_int(context.args[1])
+    duration = 0.0
+    if len(context.args) >= 3:
+        try:
+            duration = max(0.0, min(5.0, float(context.args[2])))
+        except ValueError:
+            duration = 0.0
+    try:
+        pyautogui.moveRel(dx, dy, duration=duration)
+    except Exception as e:
+        logger.exception("move_rel hatasi")
+        await reply(update, f"Hareket hatasi: {e}")
+        return
+    await _send_mouse_pos(update, header=f"↔️ Kaydirildi: ({dx:+d}, {dy:+d})")

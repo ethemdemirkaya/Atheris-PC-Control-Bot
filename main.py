@@ -38,6 +38,8 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("key", h_screen.cmd_key))
     app.add_handler(CommandHandler("scroll", h_screen.cmd_scroll))
     app.add_handler(CommandHandler("mouse_pos", h_screen.cmd_mouse_pos))
+    app.add_handler(CommandHandler("move", h_screen.cmd_move))
+    app.add_handler(CommandHandler("move_rel", h_screen.cmd_move_rel))
 
     # --- Sistem ---
     app.add_handler(CommandHandler("sysinfo", h_system.cmd_sysinfo))
