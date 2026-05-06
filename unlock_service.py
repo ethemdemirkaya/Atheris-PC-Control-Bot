@@ -215,13 +215,14 @@ def _send_unicode_char(ch: str) -> None:
         u32.SendInput(1, ctypes.byref(up), ctypes.sizeof(up))
 
 
-def do_unlock(password: str) -> tuple[bool, str]:
-    """Winlogon desktop'a tas, swipe gec, sifreyi yaz, Enter."""
+def do_unlock_inplace(password: str) -> tuple[bool, str]:
+    """Bu thread'de direkt unlock yap. Sadece child process'te (user session'da
+    SYSTEM token ile) calisir; servisin kendisi Session 0'da bunu basaramaz."""
     saved, desk = _switch_to_winlogon()
     if not desk:
-        return False, "Winlogon desktop'a gecilemedi (servis LocalSystem mi?)"
+        return False, "Winlogon desktop'a gecilemedi"
     try:
-        _send_vk(VK_SPACE)  # Lock screen swipe gec
+        _send_vk(VK_SPACE)
         time.sleep(0.4)
         for ch in password:
             _send_unicode_char(ch)
@@ -230,6 +231,179 @@ def do_unlock(password: str) -> tuple[bool, str]:
         return True, "OK"
     finally:
         _restore_desktop(saved, desk)
+
+
+# --- Session 0 → user session token + CreateProcessAsUser ---
+TOKEN_DUPLICATE = 0x0002
+TOKEN_QUERY = 0x0008
+TOKEN_ASSIGN_PRIMARY = 0x0001
+TOKEN_ADJUST_DEFAULT = 0x0080
+TOKEN_ADJUST_SESSIONID = 0x0100
+SecurityIdentification = 2
+TokenPrimary = 1
+TokenSessionId = 12
+CREATE_UNICODE_ENVIRONMENT = 0x00000400
+CREATE_NO_WINDOW = 0x08000000
+
+
+class _STARTUPINFO(ctypes.Structure):
+    _fields_ = [
+        ("cb", ctypes.c_ulong),
+        ("lpReserved", ctypes.c_wchar_p),
+        ("lpDesktop", ctypes.c_wchar_p),
+        ("lpTitle", ctypes.c_wchar_p),
+        ("dwX", ctypes.c_ulong),
+        ("dwY", ctypes.c_ulong),
+        ("dwXSize", ctypes.c_ulong),
+        ("dwYSize", ctypes.c_ulong),
+        ("dwXCountChars", ctypes.c_ulong),
+        ("dwYCountChars", ctypes.c_ulong),
+        ("dwFillAttribute", ctypes.c_ulong),
+        ("dwFlags", ctypes.c_ulong),
+        ("wShowWindow", ctypes.c_ushort),
+        ("cbReserved2", ctypes.c_ushort),
+        ("lpReserved2", ctypes.c_void_p),
+        ("hStdInput", ctypes.c_void_p),
+        ("hStdOutput", ctypes.c_void_p),
+        ("hStdError", ctypes.c_void_p),
+    ]
+
+
+class _PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("hProcess", ctypes.c_void_p),
+        ("hThread", ctypes.c_void_p),
+        ("dwProcessId", ctypes.c_ulong),
+        ("dwThreadId", ctypes.c_ulong),
+    ]
+
+
+advapi32.OpenProcessToken.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_void_p),
+]
+advapi32.OpenProcessToken.restype = ctypes.c_int
+
+advapi32.DuplicateTokenEx.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.POINTER(ctypes.c_void_p),
+]
+advapi32.DuplicateTokenEx.restype = ctypes.c_int
+
+advapi32.SetTokenInformation.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_ulong,
+]
+advapi32.SetTokenInformation.restype = ctypes.c_int
+
+advapi32.CreateProcessAsUserW.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_wchar_p,
+    ctypes.c_wchar_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int,
+    ctypes.c_ulong,
+    ctypes.c_void_p,
+    ctypes.c_wchar_p,
+    ctypes.POINTER(_STARTUPINFO),
+    ctypes.POINTER(_PROCESS_INFORMATION),
+]
+advapi32.CreateProcessAsUserW.restype = ctypes.c_int
+
+wts = ctypes.windll.wtsapi32
+wts.WTSGetActiveConsoleSessionId.restype = ctypes.c_ulong
+
+
+def do_unlock_via_user_session(password: str) -> tuple[bool, str]:
+    """SYSTEM token'i user session'a aktar, kendini --inject ile spawnla."""
+    session_id = wts.WTSGetActiveConsoleSessionId()
+    if session_id == 0xFFFFFFFF:
+        return False, "Aktif console session yok"
+    if session_id == 0:
+        return False, "Console session=0 (kullanici oturumu yok)"
+
+    proc_token = ctypes.c_void_p()
+    rights = (
+        TOKEN_DUPLICATE
+        | TOKEN_QUERY
+        | TOKEN_ASSIGN_PRIMARY
+        | TOKEN_ADJUST_DEFAULT
+        | TOKEN_ADJUST_SESSIONID
+    )
+    if not advapi32.OpenProcessToken(k32.GetCurrentProcess(), rights, ctypes.byref(proc_token)):
+        return False, f"OpenProcessToken err={k32.GetLastError()}"
+
+    dup_token = ctypes.c_void_p()
+    try:
+        if not advapi32.DuplicateTokenEx(
+            proc_token, 0, None, SecurityIdentification, TokenPrimary, ctypes.byref(dup_token)
+        ):
+            return False, f"DuplicateTokenEx err={k32.GetLastError()}"
+        try:
+            sid = ctypes.c_ulong(session_id)
+            if not advapi32.SetTokenInformation(
+                dup_token, TokenSessionId, ctypes.byref(sid), ctypes.sizeof(sid)
+            ):
+                return False, f"SetTokenInformation err={k32.GetLastError()}"
+
+            # Sifreyi temp dosyada gec
+            tmp = LOG_DIR / f"unlock_{int(time.time())}_{os.getpid()}.tmp"
+            tmp.write_text(password, encoding="utf-8")
+
+            si = _STARTUPINFO()
+            si.cb = ctypes.sizeof(si)
+            si.lpDesktop = "winsta0\\default"
+            pi = _PROCESS_INFORMATION()
+
+            cmdline = f'"{sys.executable}" "{__file__}" --inject "{tmp}"'
+            cmd_buf = ctypes.create_unicode_buffer(cmdline)
+
+            ok = advapi32.CreateProcessAsUserW(
+                dup_token,
+                None,
+                cmd_buf,
+                None,
+                None,
+                False,
+                CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW,
+                None,
+                str(PROJECT_ROOT),
+                ctypes.byref(si),
+                ctypes.byref(pi),
+            )
+            if not ok:
+                err = k32.GetLastError()
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+                return False, f"CreateProcessAsUser err={err}"
+
+            k32.WaitForSingleObject(pi.hProcess, 8000)
+            exit_code = ctypes.c_ulong()
+            k32.GetExitCodeProcess(pi.hProcess, ctypes.byref(exit_code))
+            k32.CloseHandle(pi.hProcess)
+            k32.CloseHandle(pi.hThread)
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+            if exit_code.value == 0:
+                return True, "OK (child)"
+            return False, f"Inject child exit={exit_code.value}"
+        finally:
+            k32.CloseHandle(dup_token)
+    finally:
+        k32.CloseHandle(proc_token)
 
 
 # --- Named pipe sunucu ---
@@ -284,7 +458,7 @@ def serve() -> int:
                 _write(pipe, "ERR auth")
                 log.warning("Auth fail")
                 continue
-            ok2, msg = do_unlock(password)
+            ok2, msg = do_unlock_via_user_session(password)
             _write(pipe, ("OK " + msg) if ok2 else ("ERR " + msg))
             log.info("Unlock denemesi: ok=%s msg=%s", ok2, msg)
         except Exception:
@@ -297,10 +471,33 @@ def serve() -> int:
             k32.CloseHandle(pipe)
 
 
+def _inject_main(tmp_path: str) -> int:
+    """Child process modu — user session'da SYSTEM token ile direkt inject."""
+    p = Path(tmp_path)
+    try:
+        password = p.read_text(encoding="utf-8")
+    except Exception:
+        log.exception("Inject child: temp okunamadi")
+        return 10
+    finally:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    ok, msg = do_unlock_inplace(password)
+    log.info("Inject child sonuc: ok=%s msg=%s", ok, msg)
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
     if sys.platform != "win32":
         log.error("Sadece Windows.")
         sys.exit(2)
+    if "--inject" in sys.argv:
+        idx = sys.argv.index("--inject")
+        if idx + 1 < len(sys.argv):
+            sys.exit(_inject_main(sys.argv[idx + 1]))
+        sys.exit(99)
     try:
         sys.exit(serve())
     except KeyboardInterrupt:
